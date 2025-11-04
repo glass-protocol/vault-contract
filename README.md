@@ -1,118 +1,347 @@
-# EVM Smart Contracts
+# VaultUpgradeable - EIP712 Payment Channel
 
-This repository contains a collection of custom smart contracts for the Ethereum Virtual Machine (EVM), primarily focused on security analysis and testing. It includes an NFT Marketplace and various attacker contracts.
+A secure, upgradeable vault contract with EIP712 payment channel support for GlassAI inference provider payments.
 
-## Project Structure
+## Overview
 
-The project is organized with Hardhat, a development environment for Ethereum software. Key directories include:
+The VaultUpgradeable contract implements a payment channel system where:
 
-- `/contracts`: Contains the Solidity source code for all smart contracts.
-- `/ignition`: Holds the Hardhat Ignition modules for robust deployment.
-- `/test`: Includes tests for the smart contracts.
-- `/scripts`: (Not used in this project, but traditionally for deployment scripts).
+- Users deposit tokens (ERC20 or native SEI) into the vault
+- Users sign EIP-712 approvals off-chain to authorize withdrawals
+- Providers can withdraw funds up to the approved amount using these signatures
+- Signatures are reusable until the approved amount is reached
+- Approvals are monotonically increasing (can only go up)
+- Each deposit has a timeout allowing users to reclaim unused funds
 
-## NFTMarketplace.sol
+## Key Features
 
-The `NFTMarketplace.sol` contract is a simple, fee-based marketplace for buying and selling ERC721 tokens.
+### 🔐 EIP712 Signatures
 
-### Core Features
+- Users sign withdrawal approvals using EIP-712 standard
+- Supports both EOA signatures and EIP-1271 contract wallet signatures
+- No centralized signer required - users maintain full control
 
-- **List NFTs**: Sellers can list their ERC721 tokens for sale at a specific price. They must approve the marketplace contract to manage their NFT first.
-- **Purchase NFTs**: Buyers can purchase a listed NFT by sending the required amount of native currency (e.g., SEI).
-- **Cancel Listings**: Sellers can cancel their listings at any time, as long as the NFT has not been sold.
-- **Marketplace Fees**: A percentage-based fee is taken from each sale and collected by the marketplace.
-- **Role-Based Access Control**: The contract uses OpenZeppelin's `AccessControl` for managing permissions:
-    - `DEFAULT_ADMIN_ROLE`: Can grant and revoke roles.
-    - `FEE_MANAGER_ROLE`: Can update the sales fee percentage.
-    - `PAUSER_ROLE`: Can pause and unpause the contract's core functions (`list`, `purchase`, `cancel`).
-    - `WITHDRAWER_ROLE`: Can withdraw the accumulated marketplace fees.
-- **Security**: Implements `ReentrancyGuard` to prevent re-entrancy attacks on the `purchase` function and is `Pausable` in case of emergencies.
+### 💰 Payment Channel Semantics
 
-## Available Scripts
+- Reusable signatures for multiple partial withdrawals
+- Monotonic approvals (maxAmount can only increase)
+- Nonce-based invalidation of old signatures
+- Per-deposit tracking with independent state
 
-This project uses `pnpm` as the package manager. The following scripts are defined in `package.json` to streamline development and deployment:
+### ⏰ Timeout Protection
 
-| Script                             | Description                                                                                        |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `pnpm compile`                     | Compiles the smart contracts.                                                                      |
-| `pnpm test`                        | Runs the test suite on the local Hardhat network and provides a gas usage report.                  |
-| `pnpm test:ci`                     | Runs the test suite, optimized for Continuous Integration environments.                            |
-| `pnpm lint`                        | Lints the TypeScript and JavaScript files in the project using ESLint and applies automatic fixes. |
-| `pnpm solhint`                     | Lints the Solidity files using Solhint.                                                            |
-| `pnpm format`                      | Formats the codebase using Prettier.                                                               |
-| `pnpm format:check`                | Checks for formatting errors without applying changes.                                             |
-| `pnpm coverage`                    | Generates a test coverage report for the smart contracts.                                          |
-| `pnpm deploy:ignition:sei:testnet` | Deploys the `NFTMarketplace` contract to the Sei Testnet using Hardhat Ignition.                   |
-| `pnpm deploy:ignition:sei:mainnet` | Deploys the `NFTMarketplace` contract to the Sei Mainnet using Hardhat Ignition.                   |
+- Each deposit has a configurable timeout period (in blocks)
+- Users can reclaim unused funds after timeout
+- Protects against provider unavailability
 
-## Deployed Contracts (Sei Testnet)
+### 🔄 Upgradeable
 
-The following contracts have been deployed to the Sei `atlantic-2` testnet.
+- UUPS proxy pattern for safe upgrades
+- Role-based access control
+- Pausable for emergency situations
 
-- **MockNFT**: `0x35fd75dc81971D42AfB581Eb09Fe2699E4Be13E5`
-    - [View on Seitrace](https://seitrace.com/address/0x35fd75dc81971D42AfB581Eb09Fe2699E4Be13E5?chain=atlantic-2)
-- **NFTMarketplace**: `0xd785252C80DEe5B5D6c13b5047572342998E17d2`
-    - [View on Seitrace](https://seitrace.com/address/0xd785252C80DEe5B5D6c13b5047572342998E17d2?chain=atlantic-2)
+### 🔒 Security Features
 
-To interact with them, you can use the Seitrace block explorer links above, which provide a user interface for reading contract state and executing transactions.
+- ReentrancyGuard on all state-changing functions
+- SafeERC20 for token transfers
+- Comprehensive access control roles
+- Audited architecture based on battle-tested patterns
 
-## Test Coverage
+## Architecture
 
-The project maintains 100% test coverage across all smart contracts. The coverage report is generated by running `pnpm coverage`.
+### Contract Structure
 
-![Test Coverage](./docs/coverage.png)
+```
+VaultUpgradeable (Proxy)
+├── EIP712Upgradeable (for signature verification)
+├── AccessControlUpgradeable (role management)
+├── ReentrancyGuardUpgradeable (reentrancy protection)
+├── PausableUpgradeable (emergency stop)
+└── UUPSUpgradeable (upgrade mechanism)
+```
 
-## Gas Usage
+### Roles
 
-Gas usage reports are generated automatically when running the test suite with `pnpm test`. The following table shows the gas consumption for contract deployments.
+- `DEFAULT_ADMIN_ROLE`: Can grant/revoke all roles
+- `FEE_MANAGER_ROLE`: Can set fee collector address
+- `PAUSER_ROLE`: Can pause/unpause the contract
+- `DEBUGGER_ROLE`: Can set application ID
+- `UPGRADER_ROLE`: Can upgrade the implementation
+- `BATCH_MANAGER_ROLE`: Can set batch registry for settlements
 
-![Gas Usage](./docs/gas-table.png)
-
-## Security Audit
-
-### Setup
-
-First, you need to have the solidity compiler installed with the specific version of 0.8.28. You could use pip or brew or chocolate to install this dependencies locally.
-
-1. `brew install solc-select`
-2. `solc-select install 0.8.28`
-3. `solc-select use 0.8.28`
-
-Second, you need to install locally [slither](https://github.com/crytic/slither). There's a few ways to do it, but for simplicity I'll use brew.
-
-`brew install slither`
-
-## Fuzzing
-
-This project uses [Echidna](https://github.com/crytic/echidna) for fuzz testing.
+## Usage
 
 ### Installation
 
-To run fuzz tests locally, you need to install Echidna.
-
-**MacOS:**
-
 ```bash
-brew tap crytic/crytic
-brew install echidna
+# Install dependencies
+pnpm install
+
+# Compile contracts
+pnpm compile
+
+# Run tests
+pnpm test:vault
 ```
 
-**Linux:**
+### Deployment
+
+#### Using the deployment script:
 
 ```bash
-wget https://github.com/crytic/echidna/releases/download/v2.2.0/echidna-v2.2.0-ubuntu-20.04.tar.gz
-tar -xzf echidna-v2.2.0-ubuntu-20.04.tar.gz
-sudo mv echidna /usr/local/bin/
+# Deploy to Sei testnet
+pnpm run deploy:vault:testnet
+
+# Deploy to Sei mainnet
+pnpm run deploy:vault:mainnet
 ```
 
-### Usage
-
-To run the fuzz tests, execute the following command:
+#### Using Hardhat Ignition:
 
 ```bash
-pnpm run fuzzing
+# Deploy to Sei testnet with custom parameters
+pnpm run deploy:vault:ignition:testnet
+
+# Deploy to Sei mainnet
+pnpm run deploy:vault:ignition:mainnet
 ```
 
-Echidna will then analyze the contracts specified in `echidna.config.yml` and try to falsify the properties defined in the test files under `test/fuzz/`.
+#### Environment Variables
 
-![Fuzzing output example](./docs/fuzzing.png)
+Create a `.env` file:
+
+```bash
+# Required
+PRIVATE_KEY=your_deployer_private_key
+
+# Optional
+VAULT_ADMIN=0x... # Defaults to deployer
+APPLICATION_ID=glass-ai-vault # Defaults to 'glass-ai-vault'
+```
+
+## User Flow
+
+### 1. User Deposits Tokens
+
+```typescript
+// Approve vault to spend tokens
+await token.approve(vaultAddress, amount);
+
+// Deposit with timeout
+const depositId = await vault.deposit(
+    tokenAddress,
+    amount,
+    timeoutBlocks // e.g., 1000 blocks
+);
+```
+
+### 2. User Signs Withdrawal Approval (EIP-712)
+
+```typescript
+const domain = {
+    name: 'VaultUpgradeable',
+    version: '1',
+    chainId: 1329, // Sei mainnet
+    verifyingContract: vaultAddress,
+};
+
+const types = {
+    Withdrawal: [
+        { name: 'depositor', type: 'address' },
+        { name: 'token', type: 'address' },
+        { name: 'depositId', type: 'uint256' },
+        { name: 'maxAmount', type: 'uint256' },
+        { name: 'nonce', type: 'uint256' },
+    ],
+};
+
+const message = {
+    depositor: userAddress,
+    token: tokenAddress,
+    depositId: 0,
+    maxAmount: parseUnits('100', 6), // Approve up to 100 USDC
+    nonce: 0,
+};
+
+const signature = await signer.signTypedData({
+    domain,
+    types,
+    primaryType: 'Withdrawal',
+    message,
+});
+```
+
+### 3. Provider Withdraws Funds
+
+```typescript
+// Provider can withdraw multiple times with the same signature
+await vault.withdraw(
+    userAddress,
+    tokenAddress,
+    depositId,
+    maxAmount,
+    actualAmount, // Can be less than maxAmount
+    nonce,
+    signature
+);
+```
+
+### 4. User Increases Approval (Optional)
+
+```typescript
+// To increase approval, increment nonce and sign new approval
+const newMessage = {
+    depositor: userAddress,
+    token: tokenAddress,
+    depositId: 0,
+    maxAmount: parseUnits('200', 6), // Increase to 200 USDC
+    nonce: 1, // Increment nonce to invalidate old signature
+};
+
+const newSignature = await signer.signTypedData({
+    domain,
+    types,
+    primaryType: 'Withdrawal',
+    message: newMessage,
+});
+```
+
+### 5. User Reclaims After Timeout (If Needed)
+
+```typescript
+// After timeout period has elapsed
+await vault.withdrawTimeout(tokenAddress, depositId);
+```
+
+## Smart Contract Interface
+
+### Main Functions
+
+#### Deposits
+
+```solidity
+function deposit(address token, uint256 amount, uint256 timeoutBlocks) external returns (uint256 depositId);
+
+function depositNative(uint256 timeoutBlocks) external payable returns (uint256 depositId);
+```
+
+#### Withdrawals (EIP712)
+
+```solidity
+function withdraw(
+    address depositor,
+    address token,
+    uint256 depositId,
+    uint256 maxAmount,
+    uint256 amount,
+    uint256 nonce,
+    bytes memory signature
+) external;
+
+function withdrawTimeout(address token, uint256 depositId) external;
+```
+
+#### View Functions
+
+```solidity
+function getDeposit(address user, address token, uint256 depositId) external view returns (Deposit memory);
+
+function getAvailable(address depositor, address token, uint256 depositId) external view returns (uint256);
+
+function isTimedOut(address depositor, address token, uint256 depositId) external view returns (bool);
+```
+
+## Events
+
+```solidity
+event Deposited(
+    string indexed applicationId,
+    address indexed depositor,
+    address indexed token,
+    uint256 depositId,
+    uint256 amount,
+    uint256 timeoutBlocks
+);
+
+event ApprovalIncreased(
+    string indexed applicationId,
+    address indexed depositor,
+    address indexed token,
+    uint256 depositId,
+    uint256 newMaxApproved,
+    uint256 nonce
+);
+
+event WithdrawnByProvider(
+    string indexed applicationId,
+    address indexed depositor,
+    address indexed token,
+    uint256 depositId,
+    uint256 amount,
+    uint256 totalWithdrawn
+);
+
+event TimedOut(
+    string indexed applicationId,
+    address indexed depositor,
+    address indexed token,
+    uint256 depositId,
+    uint256 amount
+);
+```
+
+## Testing
+
+The test suite includes comprehensive coverage of:
+
+- ✅ Initialization and role setup
+- ✅ ERC20 token deposits
+- ✅ Native token deposits
+- ✅ EIP712 signature verification
+- ✅ Partial withdrawals with reusable signatures
+- ✅ Monotonic approval increases
+- ✅ Timeout withdrawals
+- ✅ Admin functions
+- ✅ Pause/unpause functionality
+- ✅ Access control
+- ✅ Error cases
+
+Run tests:
+
+```bash
+pnpm test:vault
+```
+
+## Security Considerations
+
+1. **Signature Replay**: Each signature is tied to a specific deposit, amount, and nonce
+2. **Timeout Protection**: Users can always reclaim funds after timeout period
+3. **Monotonic Approvals**: Prevents downgrade attacks
+4. **Reentrancy Protection**: All state-changing functions use ReentrancyGuard
+5. **Safe Token Transfers**: Uses OpenZeppelin's SafeERC20
+6. **Role-Based Access**: Critical functions require specific roles
+7. **Pausable**: Can be paused in emergencies
+
+## Gas Optimization
+
+- Uses `unchecked` blocks where safe for gas savings
+- Caches storage variables in memory during batch operations
+- Minimal storage reads/writes
+- Efficient data structures
+
+## Upgrade Process
+
+The contract uses UUPS (Universal Upgradeable Proxy Standard):
+
+1. Only addresses with `UPGRADER_ROLE` can upgrade
+2. Upgrades are done through `upgradeTo()` or `upgradeToAndCall()`
+3. Storage layout must be maintained across upgrades
+4. Use storage gaps for future variable additions
+
+## Integration Example
+
+See `test/VaultUpgradeable.ts` for complete integration examples.
+
+## License
+
+MIT

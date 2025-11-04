@@ -8,6 +8,11 @@
         "deploy:ignition:sei:mainnet": "pnpm compile && pnpm hardhat ignition deploy ignition/modules/NFTMarketplace.ts --network sei",
         "deploy:sei:mainnet": "pnpm compile && hardhat deploy --network sei",
         "deploy:sei:testnet": "pnpm compile && hardhat deploy --network seitestnet",
+        "deploy:vault:testnet": "pnpm compile && hardhat run scripts/deploy-vault.ts --network seitestnet",
+        "deploy:vault:mainnet": "pnpm compile && hardhat run scripts/deploy-vault.ts --network sei",
+        "deploy:vault:ignition:testnet": "pnpm compile && pnpm hardhat ignition deploy ignition/modules/Vault.ts --network seitestnet",
+        "deploy:vault:ignition:mainnet": "pnpm compile && pnpm hardhat ignition deploy ignition/modules/Vault.ts --network sei",
+        "test:vault": "DOTENV_CONFIG_PATH=.env.test hardhat test test/Vault.test.ts --network hardhat",
         "analysis": "slither contracts --exclude-dependencies --exclude-informational --exclude-low --exclude-medium --exclude-high",
         "fuzzing": "./run-fuzz.sh",
         "test": "REPORT_GAS=true hardhat test test/*.ts --network hardhat",
@@ -55,6 +60,7 @@
         "viem": "^2.31.3"
     },
     "dependencies": {
-        "@openzeppelin/contracts": "^5.3.0"
+        "@openzeppelin/contracts": "^5.4.0",
+        "@openzeppelin/contracts-upgradeable": "^5.4.0"
     }
 }
