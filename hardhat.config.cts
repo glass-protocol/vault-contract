@@ -1,10 +1,10 @@
 import type { HardhatUserConfig } from 'hardhat/config';
 import '@nomicfoundation/hardhat-toolbox-viem';
 import '@nomicfoundation/hardhat-viem';
-import { ChainId, ExplorerApiBaseUrl, NetworkName, rpcUrls } from './constants/networks';
+import { ChainId, NetworkName, rpcUrls } from './constants/networks';
 import 'dotenv/config';
 
-const { PRIVATE_KEY } = process.env;
+const { PRIVATE_KEY, ETHERSCAN_API_KEY } = process.env;
 if (!PRIVATE_KEY) {
     throw new Error('HardhatConfig: The private key is required');
 }
@@ -39,28 +39,25 @@ const config: HardhatUserConfig = {
         },
     },
     sourcify: {
-        enabled: true,
+        enabled: false, // Sourcify doesn't support Sei chain yet
     },
     etherscan: {
-        apiKey: {
-            [NetworkName.SeiTestnet]: 'ANY_STRING',
-            [NetworkName.Sei]: 'ANY_STRING',
-        },
+        apiKey: ETHERSCAN_API_KEY || 'DUMMY_KEY', // Use Etherscan v2 API
         customChains: [
             {
                 network: NetworkName.SeiTestnet,
                 chainId: ChainId.SeiTestnet,
                 urls: {
-                    apiURL: `${ExplorerApiBaseUrl.SeiTestnet}/api`,
-                    browserURL: ExplorerApiBaseUrl.SeiTestnet,
+                    apiURL: 'https://api.etherscan.io/v2/api',
+                    browserURL: 'https://testnet.seiscan.io',
                 },
             },
             {
                 network: NetworkName.Sei,
                 chainId: ChainId.Sei,
                 urls: {
-                    apiURL: `${ExplorerApiBaseUrl.Sei}/api`,
-                    browserURL: ExplorerApiBaseUrl.Sei,
+                    apiURL: 'https://api.etherscan.io/v2/api',
+                    browserURL: 'https://seiscan.io',
                 },
             },
         ],

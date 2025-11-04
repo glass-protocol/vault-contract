@@ -10,6 +10,8 @@
         "deploy:sei:testnet": "pnpm compile && hardhat deploy --network seitestnet",
         "deploy:vault:testnet": "pnpm compile && hardhat run scripts/deploy-vault.ts --network seitestnet",
         "deploy:vault:mainnet": "pnpm compile && hardhat run scripts/deploy-vault.ts --network sei",
+        "verify:vault:testnet": "hardhat run scripts/verify-vault.ts --network seitestnet",
+        "verify:vault:mainnet": "hardhat run scripts/verify-vault.ts --network sei",
         "deploy:vault:ignition:testnet": "pnpm compile && pnpm hardhat ignition deploy ignition/modules/Vault.ts --network seitestnet",
         "deploy:vault:ignition:mainnet": "pnpm compile && pnpm hardhat ignition deploy ignition/modules/Vault.ts --network sei",
         "test:vault": "DOTENV_CONFIG_PATH=.env.test hardhat test test/Vault.test.ts --network hardhat",
