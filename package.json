@@ -3,6 +3,10 @@
     "version": "1.0.0",
     "description": "Custom audit attacks and test smart contracts - evm",
     "main": "index.js",
+    "engines": {
+        "node": ">=22.14.0",
+        "pnpm": ">=10.11.0"
+    },
     "scripts": {
         "deploy:ignition:sei:testnet": "pnpm compile && pnpm hardhat ignition deploy ignition/modules/NFTMarketplace.ts --network seitestnet",
         "deploy:ignition:sei:mainnet": "pnpm compile && pnpm hardhat ignition deploy ignition/modules/NFTMarketplace.ts --network sei",
