@@ -18,6 +18,8 @@
         "verify:vault:mainnet": "hardhat run scripts/verify-vault.ts --network sei",
         "deploy:vault:ignition:testnet": "pnpm compile && pnpm hardhat ignition deploy ignition/modules/Vault.ts --network seitestnet",
         "deploy:vault:ignition:mainnet": "pnpm compile && pnpm hardhat ignition deploy ignition/modules/Vault.ts --network sei",
+        "deploy:mock-erc20:testnet": "pnpm compile && hardhat run scripts/deploy-mock-erc20.ts --network seitestnet",
+        "deploy:mock-erc20:mainnet": "pnpm compile && hardhat run scripts/deploy-mock-erc20.ts --network sei",
         "test:vault": "DOTENV_CONFIG_PATH=.env.test hardhat test test/Vault.test.ts --network hardhat",
         "analysis": "slither contracts --exclude-dependencies --exclude-informational --exclude-low --exclude-medium --exclude-high",
         "fuzzing": "./run-fuzz.sh",

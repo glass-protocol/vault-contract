@@ -9,7 +9,7 @@ if (!PRIVATE_KEY) {
     throw new Error('HardhatConfig: The private key is required');
 }
 
-const GAS_PRICE = 2000000000; // 2 gwei = 2 nsei
+const GAS_PRICE = 15000000000; // 15 gwei (SEI testnet base fee is ~10 gwei)
 
 const config: HardhatUserConfig = {
     solidity: {
