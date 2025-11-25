@@ -6,7 +6,7 @@ pragma solidity 0.8.28;
  * @author 0xmar(@ogarciarevett)
  * @notice Secure vault for token deposits and withdrawals with EIP712 payment channel support
  * @dev Production-ready implementation with security improvements and gas optimizations
- * 
+ *
  * Key Features:
  * - Timestamp-based timeouts (chain-agnostic)
  * - Optimized storage layout (saves 3 storage slots per deposit)
@@ -27,13 +27,7 @@ import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import "@openzeppelin/contracts/interfaces/IERC1271.sol";
 import "./interfaces/IVault.sol";
 
-contract Vault is 
-    AccessControl,
-    ReentrancyGuard,
-    Pausable,
-    EIP712,
-    IVault 
-{
+contract Vault is AccessControl, ReentrancyGuard, Pausable, EIP712, IVault {
     using SafeERC20 for IERC20;
 
     // ============================================
@@ -59,8 +53,10 @@ contract Vault is
     uint256 public constant EMERGENCY_TIMELOCK = 48 hours;
 
     /// @notice EIP-712 typehash for withdrawal approvals
-    bytes32 private constant _WITHDRAWAL_TYPEHASH = 
-        keccak256("Withdrawal(address depositor,address token,uint256 depositId,uint256 maxAmount,uint256 nonce)");
+    bytes32 private constant _WITHDRAWAL_TYPEHASH =
+        keccak256(
+            "Withdrawal(address depositor,address token,uint256 depositId,uint256 maxAmount,uint256 nonce)"
+        );
 
     /// @notice Magic value for EIP-1271 signature validation
     bytes4 private constant _EIP1271_MAGIC_VALUE = 0x1626ba7e;
@@ -71,8 +67,9 @@ contract Vault is
 
     /// @dev Mapping of user => token => depositId => Deposit (optimized storage layout)
     /// @dev Note: NATIVE_TOKEN (address(0)) is used for native SEI deposits
-    mapping(address => mapping(address => mapping(uint256 => Deposit))) private _deposits;
-    
+    mapping(address => mapping(address => mapping(uint256 => Deposit)))
+        private _deposits;
+
     /// @dev Mapping of user => token => next available depositId
     /// @dev Note: NATIVE_TOKEN (address(0)) is used for native SEI deposits
     mapping(address => mapping(address => uint256)) private _nextDepositId;
@@ -82,6 +79,9 @@ contract Vault is
 
     /// @dev Emergency withdrawal recipient
     address public emergencyRecipient;
+
+    /// @dev The assigned receiver of any funds with withdraw function
+    address public defaultReceiver;
 
     /**
      * @notice Constructor initializes the contract with admin roles and EIP712
@@ -117,7 +117,10 @@ contract Vault is
         // Input validation
         if (token == NATIVE_TOKEN) revert InvalidAddress();
         if (amount == 0) revert InvalidAmount();
-        if (timeoutBlocks < MIN_TIMEOUT_BLOCKS || timeoutBlocks > MAX_TIMEOUT_BLOCKS) {
+        if (
+            timeoutBlocks < MIN_TIMEOUT_BLOCKS ||
+            timeoutBlocks > MAX_TIMEOUT_BLOCKS
+        ) {
             revert InvalidTimeout();
         }
         if (amount > type(uint128).max) revert AmountOverflow();
@@ -155,7 +158,10 @@ contract Vault is
     ) external payable nonReentrant whenNotPaused returns (uint256 depositId) {
         // Input validation
         if (msg.value == 0) revert InvalidAmount();
-        if (timeoutBlocks < MIN_TIMEOUT_BLOCKS || timeoutBlocks > MAX_TIMEOUT_BLOCKS) {
+        if (
+            timeoutBlocks < MIN_TIMEOUT_BLOCKS ||
+            timeoutBlocks > MAX_TIMEOUT_BLOCKS
+        ) {
             revert InvalidTimeout();
         }
         if (msg.value > type(uint128).max) revert AmountOverflow();
@@ -175,7 +181,13 @@ contract Vault is
             nonce: 0
         });
 
-        emit Deposited(msg.sender, NATIVE_TOKEN, depositId, msg.value, timeoutBlocks);
+        emit Deposited(
+            msg.sender,
+            NATIVE_TOKEN,
+            depositId,
+            msg.value,
+            timeoutBlocks
+        );
     }
 
     // ============================================
@@ -186,7 +198,8 @@ contract Vault is
      * @notice Withdraw funds from a deposit using EIP-712 signed approval
      * @dev Implements payment channel semantics with reusable signatures
      * @dev Supports both EOA (EIP-712) and contract wallet (EIP-1271) signatures
-     * @dev Funds are sent to msg.sender (the provider/withdrawer)
+     * @dev Funds are sent to msg.sender (the provider/withdrawer) if defaultReceiver is null
+     * @dev Otherwise, the funds are sent to defaultReceiver
      * @param depositor Address of the depositor who owns the deposit
      * @param token Address of the token (use NATIVE_TOKEN/address(0) for native SEI)
      * @param depositId ID of the deposit to withdraw from
@@ -214,7 +227,7 @@ contract Vault is
 
         // Validate nonce
         if (nonce < cachedNonce) revert NonceTooLow();
-        
+
         // Validate maxAmount based on nonce
         if (nonce > cachedNonce) {
             // New nonce requires strictly increasing maxAmount
@@ -226,14 +239,16 @@ contract Vault is
 
         // Verify EIP-712 signature (supports contract wallets via EIP-1271)
         bytes32 digest = _hashTypedDataV4(
-            keccak256(abi.encode(
-                _WITHDRAWAL_TYPEHASH,
-                depositor,
-                token,
-                depositId,
-                maxAmount,
-                nonce
-            ))
+            keccak256(
+                abi.encode(
+                    _WITHDRAWAL_TYPEHASH,
+                    depositor,
+                    token,
+                    depositId,
+                    maxAmount,
+                    nonce
+                )
+            )
         );
         _verifySignature(depositor, digest, signature);
 
@@ -241,7 +256,13 @@ contract Vault is
         if (maxAmount > cachedMaxApproved) {
             dep.maxApproved = uint64(maxAmount);
             dep.nonce = uint32(nonce);
-            emit ApprovalIncreased(depositor, token, depositId, maxAmount, nonce);
+            emit ApprovalIncreased(
+                depositor,
+                token,
+                depositId,
+                maxAmount,
+                nonce
+            );
         }
 
         // Validate withdrawal amount
@@ -258,15 +279,31 @@ contract Vault is
             dep.amount = uint128(cachedAmount - amount);
         }
 
-        // Transfer tokens to provider (msg.sender)
-        if (token == NATIVE_TOKEN) {
-            (bool success, ) = msg.sender.call{value: amount}("");
-            if (!success) revert TransferFailed();
+        if (defaultReceiver == address(0)) {
+            // Transfer tokens to provider (msg.sender)
+            if (token == NATIVE_TOKEN) {
+                (bool success, ) = msg.sender.call{ value: amount }("");
+                if (!success) revert TransferFailed();
+            } else {
+                IERC20(token).safeTransfer(msg.sender, amount);
+            }
         } else {
-            IERC20(token).safeTransfer(msg.sender, amount);
+            // Transfer tokens to assigned receiver
+            if (token == NATIVE_TOKEN) {
+                (bool success, ) = defaultReceiver.call{ value: amount }("");
+                if (!success) revert TransferFailed();
+            } else {
+                IERC20(token).safeTransfer(defaultReceiver, amount);
+            }
         }
 
-        emit WithdrawnByProvider(depositor, token, depositId, amount, dep.withdrawn);
+        emit WithdrawnByProvider(
+            depositor,
+            token,
+            depositId,
+            amount,
+            dep.withdrawn
+        );
     }
 
     /**
@@ -284,7 +321,7 @@ contract Vault is
 
         uint256 cachedAmount = dep.amount;
         if (cachedAmount == 0) revert NoDeposit();
-        
+
         // Check timeout using timestamp (gas optimized with unchecked)
         unchecked {
             if (block.timestamp < dep.depositBlock + dep.timeoutBlocks) {
@@ -297,7 +334,7 @@ contract Vault is
 
         // Transfer tokens back to depositor (msg.sender)
         if (token == NATIVE_TOKEN) {
-            (bool success, ) = msg.sender.call{value: cachedAmount}("");
+            (bool success, ) = msg.sender.call{ value: cachedAmount }("");
             if (!success) revert TransferFailed();
         } else {
             IERC20(token).safeTransfer(msg.sender, cachedAmount);
@@ -320,11 +357,15 @@ contract Vault is
         address recipient
     ) external onlyRole(EMERGENCY_ROLE) {
         if (recipient == address(0)) revert InvalidAddress();
-        
+
         emergencyWithdrawalTime = block.timestamp + EMERGENCY_TIMELOCK;
         emergencyRecipient = recipient;
 
-        emit EmergencyWithdrawalInitiated(msg.sender, recipient, emergencyWithdrawalTime);
+        emit EmergencyWithdrawalInitiated(
+            msg.sender,
+            recipient,
+            emergencyWithdrawalTime
+        );
     }
 
     /**
@@ -336,12 +377,13 @@ contract Vault is
         address token
     ) external onlyRole(EMERGENCY_ROLE) {
         if (emergencyWithdrawalTime == 0) revert EmergencyNotInitiated();
-        if (block.timestamp < emergencyWithdrawalTime) revert EmergencyTimelockActive();
+        if (block.timestamp < emergencyWithdrawalTime)
+            revert EmergencyTimelockActive();
 
         uint256 balance;
         if (token == NATIVE_TOKEN) {
             balance = address(this).balance;
-            (bool success, ) = emergencyRecipient.call{value: balance}("");
+            (bool success, ) = emergencyRecipient.call{ value: balance }("");
             if (!success) revert TransferFailed();
         } else {
             balance = IERC20(token).balanceOf(address(this));
@@ -353,6 +395,12 @@ contract Vault is
         // Reset emergency state
         emergencyWithdrawalTime = 0;
         emergencyRecipient = address(0);
+    }
+
+    function setDefaultReceiver(
+        address receiver
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        defaultReceiver = receiver;
     }
 
     /**
@@ -484,7 +532,9 @@ contract Vault is
 
         // Try EIP-1271 for contract wallet signatures
         if (signer.code.length > 0) {
-            try IERC1271(signer).isValidSignature(digest, signature) returns (bytes4 magicValue) {
+            try IERC1271(signer).isValidSignature(digest, signature) returns (
+                bytes4 magicValue
+            ) {
                 if (magicValue == _EIP1271_MAGIC_VALUE) return;
             } catch {}
         }
@@ -500,4 +550,3 @@ contract Vault is
         emit DirectETHReceived(msg.sender, msg.value);
     }
 }
-

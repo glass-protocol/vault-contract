@@ -445,6 +445,188 @@ describe('Vault', function () {
         });
     });
 
+    describe('Default Receiver', function () {
+        it('Should send ERC20 withdrawals to msg.sender first, then to defaultReceiver after set', async function () {
+            const { vault, mockToken, admin, user1, provider, feeCollector } = await loadFixture(deployVaultFixture);
+
+            // User deposits tokens
+            const vaultAsUser1 = await hre.viem.getContractAt('Vault', vault.address, {
+                client: { wallet: user1 },
+            });
+
+            const depositAmount = parseUnits('100', 6);
+            await vaultAsUser1.write.deposit([mockToken.address, depositAmount, 3600n]);
+
+            // User signs approval for max 50
+            const maxAmount = parseUnits('50', 6);
+            const signature = await createWithdrawalSignature(
+                vault,
+                user1,
+                user1.account.address,
+                mockToken.address,
+                0n,
+                maxAmount,
+                0n
+            );
+
+            const vaultAsProvider = await hre.viem.getContractAt('Vault', vault.address, {
+                client: { wallet: provider },
+            });
+
+            // ---- Step 1: defaultReceiver NOT set -> goes to msg.sender (provider)
+            const providerBalBefore1 = await mockToken.read.balanceOf([provider.account.address]);
+            const receiverBalBefore1 = await mockToken.read.balanceOf([feeCollector.account.address]);
+
+            const firstWithdraw = parseUnits('20', 6);
+            await vaultAsProvider.write.withdraw([
+                user1.account.address,
+                mockToken.address,
+                0n,
+                maxAmount,
+                firstWithdraw,
+                0n,
+                signature,
+            ]);
+
+            const providerBalAfter1 = await mockToken.read.balanceOf([provider.account.address]);
+            const receiverBalAfter1 = await mockToken.read.balanceOf([feeCollector.account.address]);
+
+            expect(providerBalAfter1 - providerBalBefore1).to.equal(firstWithdraw);
+            expect(receiverBalAfter1 - receiverBalBefore1).to.equal(0n);
+
+            // ---- Step 2: set defaultReceiver -> goes to defaultReceiver
+            const vaultAsAdmin = await hre.viem.getContractAt('Vault', vault.address, {
+                client: { wallet: admin },
+            });
+            await vaultAsAdmin.write.setDefaultReceiver([feeCollector.account.address]);
+
+            const providerBalBefore2 = await mockToken.read.balanceOf([provider.account.address]);
+            const receiverBalBefore2 = await mockToken.read.balanceOf([feeCollector.account.address]);
+            const depositorBalBefore2 = await mockToken.read.balanceOf([user1.account.address]);
+
+            const secondWithdraw = parseUnits('10', 6);
+            await vaultAsProvider.write.withdraw([
+                user1.account.address,
+                mockToken.address,
+                0n,
+                maxAmount,
+                secondWithdraw,
+                0n,
+                signature,
+            ]);
+
+            const providerBalAfter2 = await mockToken.read.balanceOf([provider.account.address]);
+            const receiverBalAfter2 = await mockToken.read.balanceOf([feeCollector.account.address]);
+            const depositorBalAfter2 = await mockToken.read.balanceOf([user1.account.address]);
+
+            // Provider/caller shouldn't receive tokens in step 2
+            expect(providerBalAfter2 - providerBalBefore2).to.equal(0n);
+            // Depositor's wallet shouldn't change in step 2
+            expect(depositorBalAfter2 - depositorBalBefore2).to.equal(0n);
+            // Receiver gets paid in step 2
+            expect(receiverBalAfter2 - receiverBalBefore2).to.equal(secondWithdraw);
+        });
+
+        it('Should send native withdrawals to msg.sender first, then to defaultReceiver after set', async function () {
+            const { vault, admin, user1, provider, feeCollector, publicClient } = await loadFixture(deployVaultFixture);
+
+            // User deposits native
+            const vaultAsUser1 = await hre.viem.getContractAt('Vault', vault.address, {
+                client: { wallet: user1 },
+            });
+
+            const depositAmount = parseEther('1');
+            await vaultAsUser1.write.depositNative([3600n], { value: depositAmount });
+
+            // User signs approval for max 0.4
+            const maxAmount = parseEther('0.4');
+            const signature = await createWithdrawalSignature(
+                vault,
+                user1,
+                user1.account.address,
+                '0x0000000000000000000000000000000000000000',
+                0n,
+                maxAmount,
+                0n
+            );
+
+            const vaultAsProvider = await hre.viem.getContractAt('Vault', vault.address, {
+                client: { wallet: provider },
+            });
+
+            // ---- Step 1: defaultReceiver NOT set -> goes to msg.sender (provider)
+            const providerBalBefore1 = await publicClient.getBalance({ address: provider.account.address });
+            const receiverBalBefore1 = await publicClient.getBalance({ address: feeCollector.account.address });
+
+            const firstWithdraw = parseEther('0.1');
+            let hash = await vaultAsProvider.write.withdraw([
+                user1.account.address,
+                '0x0000000000000000000000000000000000000000',
+                0n,
+                maxAmount,
+                firstWithdraw,
+                0n,
+                signature,
+            ]);
+            let receipt = await publicClient.getTransactionReceipt({ hash });
+            let gasUsed = receipt.gasUsed * receipt.effectiveGasPrice;
+
+            const providerBalAfter1 = await publicClient.getBalance({ address: provider.account.address });
+            const receiverBalAfter1 = await publicClient.getBalance({ address: feeCollector.account.address });
+
+            // provider receives amount minus gas
+            expect(providerBalAfter1 - providerBalBefore1 + gasUsed).to.equal(firstWithdraw);
+            expect(receiverBalAfter1 - receiverBalBefore1).to.equal(0n);
+
+            // ---- Step 2: set defaultReceiver -> goes to defaultReceiver
+            const vaultAsAdmin = await hre.viem.getContractAt('Vault', vault.address, {
+                client: { wallet: admin },
+            });
+            await vaultAsAdmin.write.setDefaultReceiver([feeCollector.account.address]);
+
+            const providerBalBefore2 = await publicClient.getBalance({ address: provider.account.address });
+            const receiverBalBefore2 = await publicClient.getBalance({ address: feeCollector.account.address });
+            const depositorBalBefore2 = await publicClient.getBalance({ address: user1.account.address });
+
+            const secondWithdraw = parseEther('0.1');
+            hash = await vaultAsProvider.write.withdraw([
+                user1.account.address,
+                '0x0000000000000000000000000000000000000000',
+                0n,
+                maxAmount,
+                secondWithdraw,
+                0n,
+                signature,
+            ]);
+            receipt = await publicClient.getTransactionReceipt({ hash });
+            gasUsed = receipt.gasUsed * receipt.effectiveGasPrice;
+
+            const providerBalAfter2 = await publicClient.getBalance({ address: provider.account.address });
+            const receiverBalAfter2 = await publicClient.getBalance({ address: feeCollector.account.address });
+            const depositorBalAfter2 = await publicClient.getBalance({ address: user1.account.address });
+
+            // provider only pays gas now
+            expect(providerBalBefore2 - providerBalAfter2 - gasUsed).to.equal(0n);
+            // depositor doesn't pay gas and shouldn't receive anything in step 2
+            expect(depositorBalAfter2 - depositorBalBefore2).to.equal(0n);
+            // receiver gets full amount
+            expect(receiverBalAfter2 - receiverBalBefore2).to.equal(secondWithdraw);
+        });
+
+        it('Should only allow admin to set defaultReceiver', async function () {
+            const { vault, user1, feeCollector } = await loadFixture(deployVaultFixture);
+
+            const vaultAsUser1 = await hre.viem.getContractAt('Vault', vault.address, {
+                client: { wallet: user1 },
+            });
+
+            await expect(
+                vaultAsUser1.write.setDefaultReceiver([feeCollector.account.address])
+            ).to.be.rejected;
+        });
+    });
+
+
     describe('Timeout Withdrawals', function () {
         it('Should allow depositor to reclaim funds after timeout', async function () {
             const { vault, mockToken, user1, publicClient } = await loadFixture(deployVaultFixture);
