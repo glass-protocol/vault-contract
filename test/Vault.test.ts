@@ -613,16 +613,29 @@ describe('Vault', function () {
             expect(receiverBalAfter2 - receiverBalBefore2).to.equal(secondWithdraw);
         });
 
-        it('Should only allow admin to set defaultReceiver', async function () {
-            const { vault, user1, feeCollector } = await loadFixture(deployVaultFixture);
+        it('Should allow only admin to set defaultReceiver', async function () {
+            const { vault, admin, user1, feeCollector } = await loadFixture(deployVaultFixture);
 
+            // Admin can set
+            const vaultAsAdmin = await hre.viem.getContractAt('Vault', vault.address, {
+                client: { wallet: admin },
+            });
+
+            await vaultAsAdmin.write.setDefaultReceiver([feeCollector.account.address]);
+            expect((await vault.read.defaultReceiver()).toLowerCase())
+                .to.equal(feeCollector.account.address.toLowerCase());
+
+            // Non-admin cannot set, and value stays unchanged
             const vaultAsUser1 = await hre.viem.getContractAt('Vault', vault.address, {
                 client: { wallet: user1 },
             });
 
             await expect(
-                vaultAsUser1.write.setDefaultReceiver([feeCollector.account.address])
+                vaultAsUser1.write.setDefaultReceiver([user1.account.address])
             ).to.be.rejected;
+
+            expect((await vault.read.defaultReceiver()).toLowerCase())
+                .to.equal(feeCollector.account.address.toLowerCase());
         });
     });
 
