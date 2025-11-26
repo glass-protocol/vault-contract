@@ -4,7 +4,7 @@ on:
     - push
 
 env:
-    PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+    PRIVATE_KEY: '0x1000000000000000000000000000000000000000000000000000000000000001'
 
 jobs:
     security:
@@ -43,15 +43,15 @@ jobs:
             - name: Set up Python
               uses: actions/setup-python@v5
               with:
-                python-version: '3.x'
+                  python-version: '3.x'
 
             - name: Install Slither and dependencies
               run: |
-                python -m pip install --upgrade pip
-                pip install slither-analyzer
-                pip install solc-select
-                solc-select install 0.8.28
-                solc-select use 0.8.28
-                
+                  python -m pip install --upgrade pip
+                  pip install slither-analyzer
+                  pip install solc-select
+                  solc-select install 0.8.28
+                  solc-select use 0.8.28
+
             - name: Run Slither
               run: pnpm run analysis
