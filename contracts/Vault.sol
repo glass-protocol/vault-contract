@@ -252,6 +252,10 @@ contract Vault is AccessControl, ReentrancyGuard, Pausable, EIP712, IVault {
         );
         _verifySignature(depositor, digest, signature);
 
+        // Bounds checks before downcasting
+        if (maxAmount > type(uint64).max) revert AmountOverflow();
+        if (nonce > type(uint32).max) revert NonceTooHigh();
+
         // Update approval if increased
         if (maxAmount > cachedMaxApproved) {
             dep.maxApproved = uint64(maxAmount);
