@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import "./IPaymentChannelVault.sol";
+
 /**
  * @title IVault
  * @notice Interface for the Vault contract with EIP712 payment channel support
  * @dev Production-ready with gas-optimized storage layout and enhanced security
  */
-interface IVault {
+interface IVault is IPaymentChannelVault {
     /**
      * @notice Represents a single deposit in the vault (optimized storage layout)
      * @dev Uses smaller types to pack into 3 storage slots instead of 6
@@ -27,14 +29,6 @@ interface IVault {
     }
 
     // Events
-    event Deposited(
-        address indexed depositor,
-        address indexed token,
-        uint256 depositId,
-        uint256 amount,
-        uint256 timeoutBlocks
-    );
-
     event ApprovalIncreased(
         address indexed depositor,
         address indexed token,
@@ -70,38 +64,22 @@ interface IVault {
         uint256 amount
     );
 
-    event DirectETHReceived(
-        address indexed sender,
-        uint256 amount
-    );
+    event DirectETHReceived(address indexed sender, uint256 amount);
 
     // Errors
-    error InvalidAddress();
     error InvalidSignature();
     error InsufficientBalance();
     error TransferFailed();
-    error InvalidAmount();
-    error InvalidTimeout();
     error NonceTooLow();
+    error NonceTooHigh();
     error MaxAmountTooLow();
     error AmountExceedsAvailable();
     error TimeoutNotReached();
     error NoDeposit();
     error EmergencyNotInitiated();
     error EmergencyTimelockActive();
-    error AmountOverflow();
 
     // Functions
-    function deposit(
-        address token,
-        uint256 amount,
-        uint256 timeoutBlocks
-    ) external returns (uint256 depositId);
-
-    function depositNative(
-        uint256 timeoutBlocks
-    ) external payable returns (uint256 depositId);
-
     function withdraw(
         address depositor,
         address token,
@@ -112,18 +90,11 @@ interface IVault {
         bytes memory signature
     ) external;
 
-    function withdrawTimeout(
-        address token,
-        uint256 depositId
-    ) external;
+    function withdrawTimeout(address token, uint256 depositId) external;
 
-    function initiateEmergencyWithdrawal(
-        address recipient
-    ) external;
+    function initiateEmergencyWithdrawal(address recipient) external;
 
-    function executeEmergencyWithdrawal(
-        address token
-    ) external;
+    function executeEmergencyWithdrawal(address token) external;
 
     function cancelEmergencyWithdrawal() external;
 
@@ -156,4 +127,3 @@ interface IVault {
 
     function domainSeparatorV4() external view returns (bytes32);
 }
-
